@@ -1,0 +1,161 @@
+import sys
+
+class RobotInterpreter:
+    def __init__(self):
+        self.grid_size = (64, 64)
+        self.x, self.y = 0, 0
+        self.direction = 0  # 0 = up, 1 = right, 2 = down, 3 = left
+        self.variables = {}
+        self.procedures = {}
+        self.grid = [[0] * 64 for _ in range(64)]
+        self.recursion_depth = 0
+
+    def execute_line(self, line):
+        print(f"Executing line: {line}")  # Add this line to print each command being executed
+        # rest of your code follows...
+
+    def set_size(self, size):
+        self.grid_size = tuple(map(int, size.split("*")))
+
+    def start(self, x, y):
+        self.x, self.y = int(x), int(y)
+
+    def turn_clockwise(self):
+        self.direction = (self.direction + 1) % 4
+
+    def turn_counterclockwise(self):
+        self.direction = (self.direction - 1) % 4
+
+    def step(self, steps):
+        steps = self.evaluate_expression(steps)
+        for _ in range(steps):
+            if self.direction == 0:
+                self.y -= 1
+            elif self.direction == 1:
+                self.x += 1
+            elif self.direction == 2:
+                self.y += 1
+            elif self.direction == 3:
+                self.x -= 1
+            if not (0 <= self.x < self.grid_size[0] and 0 <= self.y < self.grid_size[1]):
+                raise Exception("Robot fell off the world")
+
+    def let(self, var, value):
+        self.variables[var] = self.evaluate_expression(value)
+
+    def call_procedure(self, name, *args):
+        proc = self.procedures[name]
+        self.recursion_depth += 1
+        if self.recursion_depth > 100:
+            raise Exception("Max recursion depth reached")
+
+        local_vars = {**self.variables}
+        for i, arg in enumerate(args):
+            proc_args = proc[0]
+            local_vars[proc_args[i]] = self.evaluate_expression(arg)
+
+        for line in proc[1]:
+            self.execute_line(line, local_vars)
+        self.recursion_depth -= 1
+
+    def define_procedure(self, name, args, body):
+        self.procedures[name] = (args, body)
+
+    def evaluate_expression(self, expr):
+        if isinstance(expr, int):
+            return expr
+        if expr.isdigit():
+            return int(expr)
+        tokens = expr.split()
+        if tokens[0] == '*':
+            return self.evaluate_expression(tokens[1]) * self.evaluate_expression(tokens[2])
+        elif tokens[0] == '+':
+            return self.evaluate_expression(tokens[1]) + self.evaluate_expression(tokens[2])
+        elif tokens[0] == '-':
+            return self.evaluate_expression(tokens[1]) - self.evaluate_expression(tokens[2])
+        elif tokens[0] == '/':
+            return self.evaluate_expression(tokens[1]) // self.evaluate_expression(tokens[2])
+        elif tokens[0] == '>':
+            return self.evaluate_expression(tokens[1]) > self.evaluate_expression(tokens[2])
+        elif tokens[0] == '<':
+            return self.evaluate_expression(tokens[1]) < self.evaluate_expression(tokens[2])
+        elif tokens[0] == '=':
+            return self.evaluate_expression(tokens[1]) == self.evaluate_expression(tokens[2])
+        elif tokens[0] in self.variables:
+            return self.variables[tokens[0]]
+        else:
+            return int(tokens[0])
+
+    def execute_line(self, line, local_vars=None):
+        if local_vars is None:
+            local_vars = self.variables
+
+        tokens = line.split()
+        if tokens[0] == "size":
+            self.set_size(tokens[1])
+        elif tokens[0] == "start":
+            self.start(tokens[1], tokens[2])
+        elif tokens[0] == "turn":
+            if tokens[1] == "clockwise":
+                self.turn_clockwise()
+            elif tokens[1] == "counterclockwise":
+                self.turn_counterclockwise()
+        elif tokens[0] == "step":
+            self.step(" ".join(tokens[1:]))
+        elif tokens[0] == "let":
+            self.variables[tokens[1]] = self.evaluate_expression(" ".join(tokens[3:]))
+        elif tokens[0] == "call":
+            proc_name = tokens[1]
+            args = [self.evaluate_expression(a) for a in tokens[2:]]
+            self.call_procedure(proc_name, *args)
+        elif tokens[0] == "proc":
+            proc_name = tokens[1]
+            proc_args = tokens[2:]
+            proc_body = []
+            line = input()
+            while line != "}":
+                proc_body.append(line)
+                line = input()
+            self.define_procedure(proc_name, proc_args, proc_body)
+        elif tokens[0] == "do" and tokens[1] == "while":
+            condition = tokens[2:]
+            body = []
+            line = input()
+            while line != "}":
+                body.append(line)
+                line = input()
+            while self.evaluate_expression(" ".join(condition)):
+                for stmt in body:
+                    self.execute_line(stmt, local_vars)
+        elif tokens[0] == "while":
+            condition = tokens[1:]
+            body = []
+            line = input()
+            while line != "}":
+                body.append(line)
+                line = input()
+            while self.evaluate_expression(" ".join(condition)):
+                for stmt in body:
+                    self.execute_line(stmt, local_vars)
+        elif tokens[0] == "stop":
+            print(f"The result is ({self.x}, {self.y})")
+
+    def run(self, code):
+        for line in code.split("\n"):
+            if line.strip():
+                self.execute_line(line.strip())
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python robot_interpreter.py <code_file>")
+        return
+
+    code_file = sys.argv[1]
+    with open(code_file, 'r') as f:
+        code = f.read()
+
+    interpreter = RobotInterpreter()
+    interpreter.run(code)
+
+if __name__ == "__main__":
+    main()
